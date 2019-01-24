@@ -21,7 +21,9 @@ _WFPCKG=/tmp/wildfly-11.0.0.Final.tar.gz
 ##
 ################################################################################
 ## Add process owner ##
+## reate group
 grupadd -r $_WFPOWN
+## create account
 useradd -rd "$_WFPDIR" -c "Wildfly process owner" $_WFPOWN
 ## Create home dir
 install -vo $_WFPOWN -g $_WFPOWN -m 700 -d "$_WFPDIR"
@@ -30,26 +32,34 @@ strings </dev/urandom | head -n 3 | tr -d '\n' | passwd --stdin $_WFPOWN
 ##
 ################################################################################
 ## Install wildfly package ##
+## Create WF home dir
 install -vo $_WFPOWN -g $_WFPOWN -m 755 -d "$_WFHDIR"
+## Unpack right below home dir
 tar -xvzf "$_WFPCKG" -C "$_WFHDIR" --strip-components 1
+## Set owner entire installation tree
 chown -vR $_WFPOWN:$_WFPOWN "$_WFHDIR" 
 ##
 ################################################################################
 ## Create var dirs ##
+## Directory for log
 install -vo $_WFPOWN -g $_WFPOWN -m 770 -d /var/log/wildfly/$_WFINME
+## Link /var/log directory with the one used by WF
+ln -s /var/log/wildfly/$_WFINME "$_WFHDIR"/standalone/log
+chown -v wildfly:wildfly "$_WFHDIR"/standalone/log
+## Directory for pidfile
 install -vo $_WFPOWN -g $_WFPOWN -m 770 -d /var/run/wildfly
 ## Set temporary files
-cat >/usr/lib/tmpfiles.d/wildfly.conf <<'EOF'
-d /var/run/wildfly 0770 $_WFPOWN $_WFPOWN -
+cat >/usr/lib/tmpfiles.d/wildfly.conf <<EOF
+d /var/run/wildfly 0770 root $_WFPOWN -
 EOF
-## Set new log dir path
-ln -s /var/log/wildfly "$_WFHDIR"/standalone/log
-chown -v wildfly:wildfly "$_WFHDIR"/standalone/log
 ##
 ################################################################################
 ## Systemd configuragion ##
+## Edit installation provided unit file in systemd config. directory
 awk \
-'## Remove this line from file, and go to next input line
+'## Change the description
+/Description=/{ gsub(/=.*/,"=WildFly - '$_WFINME' instance"); print; next }
+## Remove this line from file, and go to next input line
 /Environment=LAUNCH_JBOSS_IN_BACKGROUND=1/{ next }
 ## Replace Environment filename and go to next input line
 /EnvironmentFile=/{ gsub(/=.*/,"=/etc/wildfly/'$_WFINME'.conf"); print; next }
@@ -57,50 +67,58 @@ awk \
 /PIDFile=/{ gsub(/=.*/,"=/var/run/wildfly/'$_WFINME'.pid"); print; next }
 ## Replace launch script filename and go to next input line
 /ExecStart=/{ gsub(/=.*/,"='"$_WFHDIR"'/bin/launch.sh"); print; next }
-## Print each remaining lines only once
+## Print each remaining line
 /.*/{ print; next }' \
 "$_WFHDIR"/docs/contrib/scripts/systemd/wildfly.service \
 >/etc/systemd/system/wildfly-$_WFINME.service
+## Set permissions
 chmod -v 644 /etc/systemd/system/wildfly-$_WFINME.service
+## Reload configuration
 systemctl daemon-reload
+## Enable service on startup
 systemctl enable wildfly-$_WFINME.service
 ##
 ################################################################################
 ## Set launch script ##
+## Create launch script
 cat >"$_WFHDIR/bin/launch.sh" <<'EOF'
-#!/bin/bash
+#!/bin/sh
+set -- "${1:-$WILDFLY_MODE}" "${2:-$WILDFLY_CONFIG}"
 
 if [ "x$WILDFLY_HOME" = "x" ]; then
     WILDFLY_HOME="/opt/wildfly"
 fi
-
 case "$1" in 
     [Dd][Oo][Mm][Aa][Ii][Nn])
-    	$WILDFLY_HOME/bin/domain.sh -c "${2:-$WILDFLY_CONFIG}" \
-                                    -b ${3:-$WILDFLY_BIND} ;;
+    	$WILDFLY_HOME/bin/domain.sh -c "${2:-domain.xml}" ;;
     *) 
-    	$WILDFLY_HOME/bin/standalone.sh -c "${2:-$WILDFLY_CONFIG}" \
-                                        -b ${3:-$WILDFLY_BIND} ;;
+    	$WILDFLY_HOME/bin/standalone.sh -c "${2:-standalone.xml}" ;;
 esac
 EOF
+## Set owner for launch script
 chown -v $_WFPOWN:$_WFPOWN "$_WFHDIR/bin/launch.sh"
+## Enable execution
 chmod -v 750 "$_WFHDIR/bin/launch.sh"
-## Set script environment
+## Set script environment creating a
 install -vo root -g root -m 755 -d /etc/wildfly
-cat >/etc/wildfly/$_WFINME.conf <<'EOF'
+cat >/etc/wildfly/$_WFINME.conf <<EOF
+# How to launch Wildfly
+LAUNCH_JBOSS_IN_BACKGROUND=1
+# The Pidfile 
+JBOSS_PIDFILE=/var/run/wildfly/$_WFINME.pid
 # The selected Java's installatio path
 JAVA_HOME=/usr/java/jdk1.8.0_202
 # The wildfly instance installation path 
-WILDFLY_HOME=/usr/share/wildfly/cas
+WILDFLY_HOME="$_WFHDIR"
 # The configuration you want to run
 WILDFLY_CONFIG=standalone.xml
 # The mode you want to run
 WILDFLY_MODE=standalone
-# The address to bind to
-WILDFLY_BIND=0.0.0.0
 EOF
+## Set permissions
 chmod -v 644 /etc/wildfly/$_WFINME.conf
 ##
 ################################################################################
 ## Cleanup ##
+## Remove WF tarball from temporary location
 rm -vf "$_WFPCKG"
