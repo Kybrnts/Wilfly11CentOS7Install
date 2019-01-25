@@ -119,6 +119,17 @@ EOF
 chmod -v 644 /etc/wildfly/$_WFINME.conf
 ##
 ################################################################################
+## Allow owner to sudo systemctl ##
+cat >/etc/sudoers.d/wildfly-$_WFINME <<EOF
+##
+## Allow $_WFPOWN to start/stop WildFly-$_WFINME via Systemctl
+$_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl status wildfly-$_WFINME
+$_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl stop wildfly-$_WFINME
+$_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl start wildfly-$_WFINME
+$_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl restart wildfly-$_WFINME
+EOF
+##
+################################################################################
 ## Cleanup ##
 ## Remove WF tarball from temporary location
 rm -vf "$_WFPCKG"
