@@ -14,9 +14,11 @@
 ################################################################################
 ## Parameters ##
 _WFINME=cas                ## Wildfly's instance name
+_WFIMDE=standalone         ## Wilfdly's instance mode (Not tested for domain)
 _WFPDIR=/usr/share/wildfly ## All wildflys installations container
 _WFHDIR=$_WFPDIR/$_WFINME  ## This instance home dir
 _WFPOWN=wildfly            ## Wildfly process owner name
+_WFPTOF=-10                ## Wildfly's instance port offset (avoid collisions)
 _WFPCKG=/tmp/wildfly-11.0.0.Final.tar.gz
 ##
 ################################################################################
@@ -44,8 +46,8 @@ chown -vR $_WFPOWN:$_WFPOWN "$_WFHDIR"
 ## Directory for log
 install -vo $_WFPOWN -g $_WFPOWN -m 770 -d /var/log/wildfly/$_WFINME
 ## Link /var/log directory with the one used by WF
-ln -s /var/log/wildfly/$_WFINME "$_WFHDIR"/standalone/log
-chown -v wildfly:wildfly "$_WFHDIR"/standalone/log
+ln -s /var/log/wildfly/$_WFINME "$_WFHDIR"/$_WFIMDE/log
+chown -v wildfly:wildfly "$_WFHDIR"/$_WFIMDE/log
 ## Directory for pidfile
 install -vo $_WFPOWN -g $_WFPOWN -m 770 -d /var/run/wildfly
 ## Set temporary files
@@ -111,9 +113,9 @@ JAVA_HOME=/usr/java/jdk1.8.0_202
 # The wildfly instance installation path 
 WILDFLY_HOME="$_WFHDIR"
 # The configuration you want to run
-WILDFLY_CONFIG=standalone.xml
+WILDFLY_CONFIG=$_WFIMDE.xml
 # The mode you want to run
-WILDFLY_MODE=standalone
+WILDFLY_MODE=$_WFIMDE
 EOF
 ## Set permissions
 chmod -v 644 /etc/wildfly/$_WFINME.conf
@@ -128,6 +130,11 @@ $_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl stop wildfly-$_WFINME
 $_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl start wildfly-$_WFINME
 $_WFPOWN    ALL=(ALL) NOPASSWD:      /bin/systemctl restart wildfly-$_WFINME
 EOF
+################################################################################
+## Change default socket bindings ##
+sed -i'.back' \
+    -E 's/(<socket-binding-group)(.*)offset:0\}">/\1\2offset:-10}">/1' \
+    "$_WFHDIR"/$_WFIMDE/configuration/$_WFIMDE.xml
 ##
 ################################################################################
 ## Cleanup ##
